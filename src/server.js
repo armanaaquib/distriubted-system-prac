@@ -3,8 +3,18 @@ const { ImageSets } = require('./imageSets');
 const { Scheduler } = require('./scheduler');
 
 const app = express();
+
+const getWorkerOptions = (method, path) => {
+  return {
+    host: 'localhost',
+    port: 5000,
+    path,
+    method,
+  };
+};
+
 const imageSets = new ImageSets();
-const scheduler = new Scheduler();
+const scheduler = new Scheduler(getWorkerOptions('POST', '/process'));
 scheduler.start();
 
 const PORT = 8000;
