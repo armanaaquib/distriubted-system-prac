@@ -1,8 +1,11 @@
-const express = require('express');
 const http = require('http');
+const express = require('express');
+const redis = require('redis');
 const { processImage } = require('./processImage');
+const imageSets = require('./imageSets');
 
 const app = express();
+const redisClient = redis.createClient({ db: 1 });
 
 const getServerOptions = (method, path) => {
   return {
@@ -15,12 +18,10 @@ const getServerOptions = (method, path) => {
 
 let agentId;
 
-const informWorkerFree = ({ id, tags }) => {
-  const path = `/complete-job/${agentId}/${id}`;
+const informWorkerFree = () => {
+  const path = `/complete-job/${agentId}`;
   const options = getServerOptions('POST', path);
-
-  const req = http.request(options, (res) => {});
-  req.write(JSON.stringify(tags));
+  const req = http.request(options);
   req.end();
 };
 
@@ -35,13 +36,16 @@ app.post('/process', (req, res) => {
   req.on('data', (chunk) => (data += chunk));
   req.on('end', () => {
     const params = JSON.parse(data);
-    processImage(params)
-      .then((tags) => {
-        res.end();
-        return { id: params.id, tags };
-      })
+    imageSets
+      .get(redisClient, params.id)
+      .then((imageSet) => processImage(imageSet))
+      .then((tags) =>
+        imageSets.completedProcessing(redisClient, params.id, tags)
+      )
       .then(informWorkerFree);
   });
+
+  res.end();
 });
 
 const main = (port, id) => {

@@ -1,8 +1,10 @@
 const express = require('express');
+const redis = require('redis');
 const imageSets = require('./imageSets');
 const { Scheduler } = require('./scheduler');
 const { Agent } = require('./agent');
 
+const redisClient = redis.createClient({ db: 1 });
 const app = express();
 
 const getAgentOptions = (port) => {
@@ -24,25 +26,19 @@ app.use((req, res, next) => {
 });
 
 app.post('/process/:user/:count/:width/:height/:tags', (req, res) => {
-  imageSets.add(req.params).then((job) => {
+  imageSets.add(redisClient, req.params).then((job) => {
     res.end(`id:${job.id}\n`);
     scheduler.schedule(job);
   });
 });
 
-app.post('/complete-job/:agentId/:id', (req, res) => {
-  let data = '';
-  req.on('data', (chunk) => (data += chunk));
-  req.on('end', () => {
-    const tags = JSON.parse(data);
-    imageSets.completedProcessing(req.params.id, tags);
-    scheduler.setAgentFree(+req.params.agentId);
-    res.end();
-  });
+app.post('/complete-job/:agentId', (req, res) => {
+  scheduler.setAgentFree(+req.params.agentId);
+  res.end();
 });
 
 app.get('/status/:id', (req, res) => {
-  imageSets.get(req.params.id).then((imageSet) => {
+  imageSets.get(redisClient, req.params.id).then((imageSet) => {
     res.end(JSON.stringify(imageSet));
   });
 });
