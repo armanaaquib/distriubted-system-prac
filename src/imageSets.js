@@ -1,27 +1,43 @@
-class ImageSets {
-  constructor() {
-    this.imageSets = {};
-    this.id = 0;
-  }
+const redis = require('redis');
+const client = redis.createClient({ db: 1 });
 
-  add(imageSet) {
-    this.imageSets[this.id] = {
-      ...imageSet,
-      status: 'scheduled',
-      receivedAt: new Date(),
-    };
+const getCurrId = () => {
+  return new Promise((resolve) => {
+    client.incr('curr_id', (err, res) => {
+      resolve(res);
+    });
+  });
+};
 
-    return { id: this.id++, ...imageSet };
-  }
+const createJob = (id, imageSet) => {
+  return new Promise((resolve) => {
+    const status = ['status', 'scheduled'];
+    const receivedAt = ['receivedAt', new Date()];
 
-  completedProcess(id, tags) {
-    this.imageSets[id].tags = tags;
-    this.imageSets[id].status = 'completed';
-  }
+    client.hmset(`job_${id}`, status.concat(receivedAt), (err, res) => {
+      resolve({ id, ...imageSet });
+    });
+  });
+};
 
-  get(id) {
-    return { ...this.imageSets[id] };
-  }
-}
+const add = (imageSet) => {
+  return getCurrId().then((id) => createJob(id, imageSet));
+};
 
-module.exports = { ImageSets };
+const completedProcessing = (id, tags) => {
+  const status = ['status', 'completed'];
+  const tagsField = ['tags', JSON.stringify(tags)];
+
+  client.hmset(`job_${id}`, status.concat(tagsField));
+};
+
+const get = (id) => {
+  return new Promise((resolve) => {
+    client.hgetall(`job_${id}`, (err, res) => {
+      console.log(res);
+      resolve(res);
+    });
+  });
+};
+
+module.exports = { add, completedProcessing, get };

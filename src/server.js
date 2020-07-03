@@ -1,5 +1,5 @@
 const express = require('express');
-const { ImageSets } = require('./imageSets');
+const imageSets = require('./imageSets');
 const { Scheduler } = require('./scheduler');
 const { Agent } = require('./agent');
 
@@ -14,7 +14,6 @@ const getAgentOptions = (port) => {
   };
 };
 
-const imageSets = new ImageSets();
 const scheduler = new Scheduler();
 scheduler.addAgent(new Agent(1, getAgentOptions(5000)));
 scheduler.addAgent(new Agent(2, getAgentOptions(5001)));
@@ -25,9 +24,10 @@ app.use((req, res, next) => {
 });
 
 app.post('/process/:user/:count/:width/:height/:tags', (req, res) => {
-  const job = imageSets.add(req.params);
-  res.end(`id:${job.id}\n`);
-  scheduler.schedule(job);
+  imageSets.add(req.params).then((job) => {
+    res.end(`id:${job.id}\n`);
+    scheduler.schedule(job);
+  });
 });
 
 app.post('/complete-job/:agentId/:id', (req, res) => {
@@ -35,15 +35,16 @@ app.post('/complete-job/:agentId/:id', (req, res) => {
   req.on('data', (chunk) => (data += chunk));
   req.on('end', () => {
     const tags = JSON.parse(data);
-    imageSets.completedProcess(req.params.id, tags);
+    imageSets.completedProcessing(req.params.id, tags);
     scheduler.setAgentFree(+req.params.agentId);
     res.end();
   });
 });
 
 app.get('/status/:id', (req, res) => {
-  const imageSet = imageSets.get(req.params.id);
-  res.end(JSON.stringify(imageSet));
+  imageSets.get(req.params.id).then((imageSet) => {
+    res.end(JSON.stringify(imageSet));
+  });
 });
 
 const main = () => {
