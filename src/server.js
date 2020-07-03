@@ -1,24 +1,19 @@
+const http = require('http');
 const express = require('express');
 const redis = require('redis');
 const imageSets = require('./imageSets');
-const { Scheduler } = require('./scheduler');
-const { Agent } = require('./agent');
 
 const redisClient = redis.createClient({ db: 1 });
 const app = express();
 
-const getAgentOptions = (port) => {
+const getQueueBrokerOptions = (method, path) => {
   return {
     host: 'localhost',
-    port,
-    path: '/process',
-    method: 'POST',
+    port: 8001,
+    path,
+    method,
   };
 };
-
-const scheduler = new Scheduler();
-scheduler.addAgent(new Agent(1, getAgentOptions(5000)));
-scheduler.addAgent(new Agent(2, getAgentOptions(5001)));
 
 app.use((req, res, next) => {
   console.log(`${req.method} ${req.url}`);
@@ -28,13 +23,13 @@ app.use((req, res, next) => {
 app.post('/process/:user/:count/:width/:height/:tags', (req, res) => {
   imageSets.add(redisClient, req.params).then((job) => {
     res.end(`id:${job.id}\n`);
-    scheduler.schedule(job);
-  });
-});
 
-app.post('/complete-job/:agentId', (req, res) => {
-  scheduler.setAgentFree(+req.params.agentId);
-  res.end();
+    const options = getQueueBrokerOptions('POST', `/queue-job/${job.id}`);
+    const qbReq = http.request(options, (res) => {
+      console.log('Got from queue broker', res.statusCode);
+    });
+    qbReq.end();
+  });
 });
 
 app.get('/status/:id', (req, res) => {

@@ -1,10 +1,8 @@
 const http = require('http');
-const express = require('express');
 const redis = require('redis');
 const { processImage } = require('./processImage');
 const imageSets = require('./imageSets');
 
-const app = express();
 const redisClient = redis.createClient({ db: 1 });
 
 const getServerOptions = (method, path) => {
@@ -16,42 +14,40 @@ const getServerOptions = (method, path) => {
   };
 };
 
-let agentId;
-
-const informWorkerFree = () => {
-  const path = `/complete-job/${agentId}`;
-  const options = getServerOptions('POST', path);
-  const req = http.request(options);
-  req.end();
-};
-
-app.use((req, res, next) => {
-  console.log(`${req.method} ${req.url}`);
-  next();
-});
-
-app.post('/process', (req, res) => {
-  let data = '';
-
-  req.on('data', (chunk) => (data += chunk));
-  req.on('end', () => {
-    const params = JSON.parse(data);
-    imageSets
-      .get(redisClient, params.id)
-      .then((imageSet) => processImage(imageSet))
-      .then((tags) =>
-        imageSets.completedProcessing(redisClient, params.id, tags)
-      )
-      .then(informWorkerFree);
+const getJob = () => {
+  return new Promise((resolve, reject) => {
+    const options = getServerOptions('GET', '/request-job');
+    const req = http.request(options, (res) => {
+      let data = '';
+      res.on('data', (chunk) => (data += chunk));
+      res.on('end', () => {
+        if (JSON.parse(data).id) {
+          resolve(data);
+        } else {
+          reject('no job');
+        }
+      });
+    });
+    req.end();
   });
-
-  res.end();
-});
-
-const main = (port, id) => {
-  agentId = id;
-  const PORT = port || 5000;
-  app.listen(PORT, () => console.log(`Server Listening at ${PORT}`));
 };
 
-main(+process.argv[2], +process.argv[3]);
+const runLoop = () => {
+  getJob()
+    .then((data) => {
+      console.log(data);
+      const params = JSON.parse(data);
+      imageSets
+        .get(redisClient, params.id)
+        .then((imageSet) => processImage(imageSet))
+        .then((tags) =>
+          imageSets.completedProcessing(redisClient, params.id, tags)
+        )
+        .then(runLoop);
+    })
+    .catch(() => {
+      setTimeout(runLoop, 1000);
+    });
+};
+
+runLoop();
