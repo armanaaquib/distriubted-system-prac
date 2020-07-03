@@ -3,7 +3,6 @@ const http = require('http');
 const { processImage } = require('./processImage');
 
 const app = express();
-const PORT = 5000;
 
 const getServerOptions = (method, path) => {
   return {
@@ -14,8 +13,10 @@ const getServerOptions = (method, path) => {
   };
 };
 
+let agentId;
+
 const informWorkerFree = ({ id, tags }) => {
-  const path = `/complete-job/${id}`;
+  const path = `/complete-job/${agentId}/${id}`;
   const options = getServerOptions('POST', path);
 
   const req = http.request(options, (res) => {});
@@ -43,4 +44,10 @@ app.post('/process', (req, res) => {
   });
 });
 
-app.listen(PORT, () => console.log(`Server Listening at ${PORT}`));
+const main = (port, id) => {
+  agentId = id;
+  const PORT = port || 5000;
+  app.listen(PORT, () => console.log(`Server Listening at ${PORT}`));
+};
+
+main(+process.argv[2], +process.argv[3]);
